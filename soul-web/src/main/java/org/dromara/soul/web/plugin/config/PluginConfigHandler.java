@@ -19,12 +19,16 @@
 package org.dromara.soul.web.plugin.config;
 
 import com.google.common.base.Splitter;
+import com.google.common.collect.Lists;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import org.dromara.soul.common.config.DubboRegisterConfig;
 import org.dromara.soul.common.config.MonitorConfig;
 import org.dromara.soul.common.config.RateLimiterConfig;
 import org.dromara.soul.common.dto.PluginData;
 import org.dromara.soul.common.enums.PluginEnum;
 import org.dromara.soul.common.enums.RedisModeEnum;
 import org.dromara.soul.common.utils.GsonUtils;
+import org.dromara.soul.web.plugin.dubbo.ApplicationConfigCache;
 import org.influxdb.dto.Point;
 import org.springframework.data.influxdb.InfluxDBConnectionFactory;
 import org.springframework.data.influxdb.InfluxDBProperties;
@@ -35,7 +39,9 @@ import org.springframework.data.redis.connection.RedisNode;
 import org.springframework.data.redis.connection.RedisPassword;
 import org.springframework.data.redis.connection.RedisSentinelConfiguration;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.RedisSerializer;
@@ -99,18 +105,48 @@ public enum PluginConfigHandler {
                             Singleton.INST.single(ReactiveRedisTemplate.class, reactiveRedisTemplate);
                             Singleton.INST.single(RateLimiterConfig.class, rateLimiterConfig);
                         }
+                    } else if (PluginEnum.DUBBO.getName().equals(pluginData.getName())) {
+                        DubboRegisterConfig dubboRegisterConfig = GsonUtils.getInstance().fromJson(pluginData.getConfig(), DubboRegisterConfig.class);
+                        DubboRegisterConfig exist = Singleton.INST.get(DubboRegisterConfig.class);
+                        if (Objects.nonNull(dubboRegisterConfig)) {
+                            if (Objects.isNull(exist)
+                                    || !dubboRegisterConfig.equals(exist)) {
+                                //如果是空，进行初始化操作，
+                                ApplicationConfigCache.getInstance().init(dubboRegisterConfig.getRegister());
+                                ApplicationConfigCache.getInstance().invalidateAll();
+                            }
+                            Singleton.INST.single(DubboRegisterConfig.class, dubboRegisterConfig);
+                        }
                     }
                 });
 
     }
 
     private LettuceConnectionFactory createLettuceConnectionFactory(final RateLimiterConfig rateLimiterConfig) {
+        LettuceClientConfiguration lettuceClientConfiguration = getLettuceClientConfiguration(rateLimiterConfig);
         if (RedisModeEnum.SENTINEL.getName().equals(rateLimiterConfig.getMode())) {
-            return new LettuceConnectionFactory(redisSentinelConfiguration(rateLimiterConfig));
+            return new LettuceConnectionFactory(redisSentinelConfiguration(rateLimiterConfig), lettuceClientConfiguration);
         } else if (RedisModeEnum.CLUSTER.getName().equals(rateLimiterConfig.getMode())) {
-            return new LettuceConnectionFactory(redisClusterConfiguration(rateLimiterConfig));
+            return new LettuceConnectionFactory(redisClusterConfiguration(rateLimiterConfig), lettuceClientConfiguration);
         }
-        return new LettuceConnectionFactory(redisStandaloneConfiguration(rateLimiterConfig));
+        return new LettuceConnectionFactory(redisStandaloneConfiguration(rateLimiterConfig), lettuceClientConfiguration);
+    }
+
+    private LettuceClientConfiguration getLettuceClientConfiguration(final RateLimiterConfig rateLimiterConfig) {
+        return LettucePoolingClientConfiguration.builder()
+                .poolConfig(getPoolConfig(rateLimiterConfig))
+                .build();
+    }
+
+    private GenericObjectPoolConfig<?> getPoolConfig(final RateLimiterConfig rateLimiterConfig) {
+        GenericObjectPoolConfig<?> config = new GenericObjectPoolConfig<>();
+        config.setMaxTotal(rateLimiterConfig.getMaxActive());
+        config.setMaxIdle(rateLimiterConfig.getMaxIdle());
+        config.setMinIdle(rateLimiterConfig.getMinIdle());
+        if (rateLimiterConfig.getMaxWait() != null) {
+            config.setMaxWaitMillis(rateLimiterConfig.getMaxWait().toMillis());
+        }
+        return config;
     }
 
     protected final RedisStandaloneConfiguration redisStandaloneConfiguration(final RateLimiterConfig rateLimiterConfig) {
@@ -148,12 +184,12 @@ public enum PluginConfigHandler {
 
     private List<RedisNode> createRedisNode(final String url) {
         List<RedisNode> redisNodes = new ArrayList<>();
-        List<String> nodes = Splitter.on(";").splitToList(url);
+        List<String> nodes = Lists.newArrayList(Splitter.on(";").split(url));
         for (String node : nodes) {
             try {
                 String[] parts = StringUtils.split(node, ":");
                 Assert.state(Objects.requireNonNull(parts).length == 2, "Must be defined as 'host:port'");
-                redisNodes.add(new RedisNode(parts[0], Integer.valueOf(parts[1])));
+                redisNodes.add(new RedisNode(parts[0], Integer.parseInt(parts[1])));
             } catch (RuntimeException ex) {
                 throw new IllegalStateException(
                         "Invalid redis sentinel " + "property '" + node + "'", ex);

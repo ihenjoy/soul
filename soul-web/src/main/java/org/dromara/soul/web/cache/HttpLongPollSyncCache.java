@@ -29,6 +29,7 @@ import org.dromara.soul.common.concurrent.SoulThreadFactory;
 import org.dromara.soul.common.constant.HttpConstants;
 import org.dromara.soul.common.dto.AppAuthData;
 import org.dromara.soul.common.dto.ConfigData;
+import org.dromara.soul.common.dto.MetaData;
 import org.dromara.soul.common.dto.PluginData;
 import org.dromara.soul.common.dto.RuleData;
 import org.dromara.soul.common.dto.SelectorData;
@@ -49,6 +50,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -65,6 +67,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author xiaoyu
  * @since 2.0.0
  */
+@SuppressWarnings("all")
 public class HttpLongPollSyncCache extends HttpCacheHandler implements CommandLineRunner, DisposableBean {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HttpLongPollSyncCache.class);
@@ -96,7 +99,7 @@ public class HttpLongPollSyncCache extends HttpCacheHandler implements CommandLi
 
     public HttpLongPollSyncCache(final SoulConfig.HttpConfig httpConfig) {
         this.httpConfig = httpConfig;
-        serverList = Splitter.on(",").splitToList(httpConfig.getUrl());
+        serverList = Lists.newArrayList(Splitter.on(",").split(httpConfig.getUrl()));
     }
 
     @Override
@@ -151,7 +154,7 @@ public class HttpLongPollSyncCache extends HttpCacheHandler implements CommandLi
             LOGGER.info("request configs: [{}]", url);
             try {
                 String json = this.httpClient.getForObject(url, String.class);
-                LOGGER.info("get configs: [{}]", json);
+                LOGGER.info("get latest configs: [{}]", json);
                 updateCacheWithJson(json);
                 return;
             } catch (Exception e) {
@@ -166,51 +169,59 @@ public class HttpLongPollSyncCache extends HttpCacheHandler implements CommandLi
         }
     }
 
-    /**
-     * If the data for some nodes has not changed, the node is null.
-     *
-     * @param json {@linkplain org.dromara.soul.common.result.SoulResult}
-     */
     private void updateCacheWithJson(final String json) {
 
         JsonObject jsonObject = GSON.fromJson(json, JsonObject.class);
         JsonObject data = jsonObject.getAsJsonObject("data");
 
-        // appAuth
-        JsonObject configData = data.getAsJsonObject(ConfigGroupEnum.APP_AUTH.name());
-        if (configData != null) {
-            ConfigData<AppAuthData> result = GSON.fromJson(configData, new TypeToken<ConfigData<AppAuthData>>() {
-            }.getType());
-            GROUP_CACHE.put(ConfigGroupEnum.APP_AUTH, result);
-            this.flushAllAppAuth(result.getData());
-        }
-
         // plugin
-        configData = data.getAsJsonObject(ConfigGroupEnum.PLUGIN.name());
-        if (configData != null) {
-            ConfigData<PluginData> result = GSON.fromJson(configData, new TypeToken<ConfigData<PluginData>>() {
+        JsonObject pluginData = data.getAsJsonObject(ConfigGroupEnum.PLUGIN.name());
+        if (pluginData != null) {
+            ConfigData<PluginData> result = GSON.fromJson(pluginData, new TypeToken<ConfigData<PluginData>>() {
             }.getType());
             GROUP_CACHE.put(ConfigGroupEnum.PLUGIN, result);
             this.flushAllPlugin(result.getData());
         }
 
         // rule
-        configData = data.getAsJsonObject(ConfigGroupEnum.RULE.name());
-        if (configData != null) {
-            ConfigData<RuleData> result = GSON.fromJson(configData, new TypeToken<ConfigData<RuleData>>() {
+        JsonObject ruleData = data.getAsJsonObject(ConfigGroupEnum.RULE.name());
+        if (ruleData != null) {
+            ConfigData<RuleData> result = GSON.fromJson(ruleData, new TypeToken<ConfigData<RuleData>>() {
             }.getType());
             GROUP_CACHE.put(ConfigGroupEnum.RULE, result);
             this.flushAllRule(result.getData());
         }
 
         // selector
-        configData = data.getAsJsonObject(ConfigGroupEnum.SELECTOR.name());
-        if (configData != null) {
-            ConfigData<SelectorData> result = GSON.fromJson(configData, new TypeToken<ConfigData<SelectorData>>() {
+        JsonObject selectorData = data.getAsJsonObject(ConfigGroupEnum.SELECTOR.name());
+        if (selectorData != null) {
+            ConfigData<SelectorData> result = GSON.fromJson(selectorData, new TypeToken<ConfigData<SelectorData>>() {
             }.getType());
             GROUP_CACHE.put(ConfigGroupEnum.SELECTOR, result);
             this.flushAllSelector(result.getData());
         }
+
+        // appAuth
+        JsonObject appAuthData = data.getAsJsonObject(ConfigGroupEnum.APP_AUTH.name());
+        if (appAuthData != null) {
+            ConfigData<AppAuthData> result = GSON.fromJson(appAuthData, new TypeToken<ConfigData<AppAuthData>>() {
+            }.getType());
+            GROUP_CACHE.put(ConfigGroupEnum.APP_AUTH, result);
+            this.flushAllAppAuth(result.getData());
+        }
+
+        // metaData
+        JsonObject metaData = data.getAsJsonObject(ConfigGroupEnum.META_DATA.name());
+        if (metaData != null) {
+            ConfigData<MetaData> result = GSON.fromJson(metaData, new TypeToken<ConfigData<MetaData>>() {
+            }.getType());
+            GROUP_CACHE.put(ConfigGroupEnum.META_DATA, result);
+            this.flushMetaData(result.getData());
+        }
+
+
+
+
 
     }
 
@@ -227,16 +238,17 @@ public class HttpLongPollSyncCache extends HttpCacheHandler implements CommandLi
         HttpEntity httpEntity = new HttpEntity(params, headers);
         for (String server : serverList) {
             String listenerUrl = server + "/configs/listener";
-            LOGGER.info("request listener configs: [{}]", listenerUrl);
+            LOGGER.debug("request listener configs: [{}]", listenerUrl);
             try {
                 String json = this.httpClient.postForEntity(listenerUrl, httpEntity, String.class).getBody();
-                LOGGER.info("listener result: [{}]", json);
+                LOGGER.debug("listener result: [{}]", json);
                 JsonArray groupJson = GSON.fromJson(json, JsonObject.class).getAsJsonArray("data");
                 if (groupJson != null) {
                     // fetch group configuration async.
                     ConfigGroupEnum[] changedGroups = GSON.fromJson(groupJson, ConfigGroupEnum[].class);
                     if (ArrayUtils.isNotEmpty(changedGroups)) {
-                        executor.execute(() -> fetchGroupConfig(changedGroups));
+                        LOGGER.info("Group config changed: {}", Arrays.toString(changedGroups));
+                        this.fetchGroupConfig(changedGroups);
                     }
                 }
                 break;

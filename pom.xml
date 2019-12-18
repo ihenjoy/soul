@@ -7,7 +7,7 @@
     <groupId>org.dromara</groupId>
     <artifactId>soul</artifactId>
     <packaging>pom</packaging>
-    <version>2.0.1-SNAPSHOT</version>
+    <version>2.1.1-RELEASE</version>
     <name>soul</name>
     <modules>
         <module>soul-admin</module>
@@ -16,6 +16,7 @@
         <module>soul-configuration</module>
         <module>soul-spring-boot-starter</module>
         <module>soul-bootstrap</module>
+        <module>soul-client</module>
     </modules>
 
     <organization>
@@ -50,7 +51,7 @@
             <email>549477611@qq.com</email>
             <organization>org.dromara</organization>
             <roles>
-                <role>Developer</role>
+                <role>PPMC</role>
             </roles>
         </developer>
 
@@ -132,6 +133,12 @@
             <dependency>
                 <groupId>org.dromara</groupId>
                 <artifactId>soul-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.dromara</groupId>
+                <artifactId>soul-client</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -253,7 +260,7 @@
             <dependency>
                 <groupId>org.apache.zookeeper</groupId>
                 <artifactId>zookeeper</artifactId>
-                <version>3.4.9</version>
+                <version>3.5.6</version>
             </dependency>
             <dependency>
                 <groupId>com.101tec</groupId>
@@ -283,7 +290,7 @@
 
     <build>
         <plugins>
-            <!-- <plugin>
+             <plugin>
                  <groupId>org.sonatype.plugins</groupId>
                  <artifactId>nexus-staging-maven-plugin</artifactId>
                  <version>1.6.3</version>
@@ -307,7 +314,6 @@
                      </execution>
                  </executions>
              </plugin>
-              -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>

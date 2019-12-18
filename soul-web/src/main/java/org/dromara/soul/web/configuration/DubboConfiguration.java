@@ -19,14 +19,19 @@
 package org.dromara.soul.web.configuration;
 
 import org.dromara.soul.web.cache.LocalCacheManager;
+import org.dromara.soul.web.filter.DubboBodyWebFilter;
 import org.dromara.soul.web.plugin.SoulPlugin;
+import org.dromara.soul.web.plugin.after.DubboResponsePlugin;
+import org.dromara.soul.web.plugin.dubbo.DefaultGenericParamResolveServiceImpl;
 import org.dromara.soul.web.plugin.dubbo.DubboProxyService;
-import org.dromara.soul.web.plugin.dubbo.GenericParamService;
-import org.dromara.soul.web.plugin.dubbo.GenericParamServiceImpl;
+import org.dromara.soul.web.plugin.dubbo.GenericParamResolveService;
 import org.dromara.soul.web.plugin.function.DubboPlugin;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.SearchStrategy;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.annotation.Order;
+import org.springframework.web.server.WebFilter;
 
 /**
  * the dubbo configuration.
@@ -36,14 +41,25 @@ import org.springframework.context.annotation.Bean;
 public class DubboConfiguration {
 
     /**
+     * Body web filter web filter.
+     *
+     * @return the web filter
+     */
+    @Bean
+    @Order(20)
+    public WebFilter dubboBodyWebFilter() {
+        return new DubboBodyWebFilter();
+    }
+
+    /**
      * Generic param service generic param service.
      *
      * @return the generic param service
      */
     @Bean
-    @ConditionalOnMissingBean(value = GenericParamService.class, search = SearchStrategy.ALL)
-    public GenericParamService genericParamService() {
-        return new GenericParamServiceImpl();
+    @ConditionalOnMissingBean(value = GenericParamResolveService.class, search = SearchStrategy.ALL)
+    public GenericParamResolveService genericParamResolveService() {
+        return new DefaultGenericParamResolveServiceImpl();
     }
 
     /**
@@ -53,8 +69,18 @@ public class DubboConfiguration {
      * @return {@linkplain DubboPlugin}
      */
     @Bean
-    public SoulPlugin dubboPlugin(LocalCacheManager localCacheManager) {
-        return new DubboPlugin(localCacheManager, new DubboProxyService(genericParamService()));
+    public SoulPlugin dubboPlugin(@Qualifier("localCacheManager") final LocalCacheManager localCacheManager) {
+        return new DubboPlugin(localCacheManager, new DubboProxyService(genericParamResolveService()));
+    }
+
+    /**
+     * Dubbo response plugin soul plugin.
+     *
+     * @return the soul plugin
+     */
+    @Bean
+    public SoulPlugin dubboResponsePlugin() {
+        return new DubboResponsePlugin();
     }
 
 }

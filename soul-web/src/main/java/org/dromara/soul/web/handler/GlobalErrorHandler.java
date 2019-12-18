@@ -18,8 +18,8 @@
 
 package org.dromara.soul.web.handler;
 
-import com.google.common.collect.Maps;
-import org.dromara.soul.common.exception.CommonErrorCode;
+import org.dromara.soul.common.utils.GsonUtils;
+import org.dromara.soul.web.result.SoulResultWarp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.web.ErrorProperties;
@@ -63,7 +63,7 @@ public class GlobalErrorHandler extends DefaultErrorWebExceptionHandler {
     @Override
     protected Map<String, Object> getErrorAttributes(final ServerRequest request, final boolean includeStackTrace) {
         logError(request);
-        return response(HttpStatus.INTERNAL_SERVER_ERROR.value());
+        return response();
     }
 
     @Override
@@ -73,23 +73,17 @@ public class GlobalErrorHandler extends DefaultErrorWebExceptionHandler {
 
     @Override
     protected HttpStatus getHttpStatus(final Map<String, Object> errorAttributes) {
-        int statusCode = (int) errorAttributes.get("code");
-        return HttpStatus.valueOf(statusCode);
+        return HttpStatus.INTERNAL_SERVER_ERROR;
     }
 
-    private static Map<String, Object> response(final int status) {
-        Map<String, Object> map = Maps.newHashMapWithExpectedSize(3);
-        map.put("code", status);
-        map.put("message", CommonErrorCode.ERROR_MSG);
-        map.put("data", null);
-        return map;
+    private static Map<String, Object> response() {
+        Object error = SoulResultWarp.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(), null);
+        return GsonUtils.getInstance().toObjectMap(GsonUtils.getInstance().toJson(error));
     }
 
     private void logError(final ServerRequest request) {
         Throwable ex = getError(request);
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug(request.exchange().getLogPrefix() + formatError(ex, request));
-        }
+        LOGGER.error(request.exchange().getLogPrefix() + formatError(ex, request));
     }
 
     private String formatError(final Throwable ex, final ServerRequest request) {

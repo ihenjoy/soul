@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author xiaoyu
  */
 public enum Singleton {
+
     /**
      * Inst singleton.
      */
@@ -46,7 +47,6 @@ public enum Singleton {
      */
     public void single(final Class clazz, final Object o) {
         SINGLES.put(clazz.getName(), o);
-
     }
 
     /**
